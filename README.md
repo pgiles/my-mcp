@@ -56,7 +56,41 @@ Generate prompts for mathematical calculations.
 
 ## Installation & Development
 
-### Without `uv` (Standard Python)
+### Using Virtual Environment (Recommended)
+
+1. **Create and activate virtual environment:**
+   ```bash
+   # Create virtual environment
+   python -m venv venv
+   
+   # Activate virtual environment
+   # On Unix/macOS:
+   source venv/bin/activate
+   # On Windows:
+   # venv\Scripts\activate
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **Run in development mode:**
+   ```bash
+   python -m src.server --port 8000 --log-level DEBUG
+   ```
+
+4. **Run tests:**
+   ```bash
+   pytest
+   ```
+
+5. **Deactivate virtual environment when done:**
+   ```bash
+   deactivate
+   ```
+
+### Without Virtual Environment (Not Recommended)
 
 1. **Install dependencies:**
    ```bash

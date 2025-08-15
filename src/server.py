@@ -185,71 +185,76 @@ def calculation_helper_prompt(operation: str = "addition", context: str = "") ->
     return base_prompt
 
 
-def create_app():
-    """Create and configure the Starlette application."""
-    from starlette.applications import Starlette
+# Add custom routes using FastMCP's custom_route decorator
+@mcp.custom_route("/health", methods=["GET"])
+async def health_check(request):
+    """Health check endpoint for container orchestration."""
     from starlette.responses import JSONResponse
-    from starlette.routing import Route
     
-    async def health_check(request):
-        """Health check endpoint for container orchestration."""
-        # Get tool and prompt count from the server's capabilities
-        tools_count = len(getattr(mcp, '_tool_handlers', {}))
-        prompts_count = len(getattr(mcp, '_prompt_handlers', {}))
+    # Get tool and prompt count using FastMCP's built-in methods
+    try:
+        tools = await mcp.list_tools()
+        tools_count = len(tools)
+    except Exception:
+        tools_count = 0
         
-        return JSONResponse({
-            "status": "healthy",
-            "server": "ContainerMCPServer",
-            "transport": "streamable-http",
-            "tools_count": tools_count,
-            "prompts_count": prompts_count
-        })
+    try:
+        prompts = getattr(mcp, '_prompts', {})
+        prompts_count = len(prompts)
+    except Exception:
+        prompts_count = 0
     
-    async def root(request):
-        """Root endpoint with server information."""
-        # Get tool and prompt names from the server's capabilities  
-        tools = list(getattr(mcp, '_tool_handlers', {}).keys())
-        prompts = list(getattr(mcp, '_prompt_handlers', {}).keys())
-        
-        return JSONResponse({
-            "name": "Container MCP Server",
-            "version": "1.0.0",
-            "transport": "streamable-http",
-            "mcp_endpoint": "/mcp",
-            "health_endpoint": "/health",
-            "tools": tools,
-            "prompts": prompts
-        })
-    
-    # Get the MCP app
-    mcp_app = mcp.streamable_http_app()
-    
-    # Create a new Starlette app with custom routes
-    routes = [
-        Route("/health", health_check, methods=["GET"]),
-        Route("/", root, methods=["GET"]),
-    ]
-    
-    app = Starlette(routes=routes)
-    
-    # Mount the MCP app at /mcp
-    from starlette.routing import Mount
-    app.router.routes.append(Mount("/mcp", app=mcp_app))
-    
-    return app
+    return JSONResponse({
+        "status": "healthy",
+        "server": "ContainerMCPServer",
+        "transport": "streamable-http",
+        "tools_count": tools_count,
+        "prompts_count": prompts_count
+    })
 
 
-async def run_server(port: int = 8000, log_level: str = "INFO", json_response: bool = False):
+@mcp.custom_route("/", methods=["GET"])
+async def root_info(request):
+    """Root endpoint with server information."""
+    from starlette.responses import JSONResponse
+    
+    # Get tool and prompt names using FastMCP's built-in methods
+    try:
+        tool_list = await mcp.list_tools()
+        tools = [tool.name for tool in tool_list]
+    except Exception:
+        tools = []
+        
+    try:
+        prompts = list(getattr(mcp, '_prompts', {}).keys())
+    except Exception:
+        prompts = []
+    
+    return JSONResponse({
+        "name": "Container MCP Server",
+        "version": "1.0.0",
+        "transport": "streamable-http",
+        "mcp_endpoint": "/mcp",
+        "health_endpoint": "/health",
+        "tools": tools,
+        "prompts": prompts
+    })
+
+
+def create_app():
+    """Create and return the FastMCP streamable HTTP app."""
+    return mcp.streamable_http_app()
+
+
+def run_server(port: int = 8000, log_level: str = "INFO", json_response: bool = False):
     """
-    Run the MCP server.
+    Run the MCP server using FastMCP's built-in server.
     
     Args:
         port: Port to run the server on
         log_level: Logging level
         json_response: Whether to use JSON responses instead of SSE
     """
-    import uvicorn
-    
     # Update server configuration
     if json_response:
         mcp.json_response = True
@@ -258,24 +263,14 @@ async def run_server(port: int = 8000, log_level: str = "INFO", json_response: b
     logger.info(f"Starting MCP server on port {port}")
     logger.info(f"Server name: {mcp.name}")
     
-    # Log available tools and prompts from handlers
-    tools = list(getattr(mcp, '_tool_handlers', {}).keys())
-    prompts = list(getattr(mcp, '_prompt_handlers', {}).keys())
-    logger.info(f"Available tools: {tools}")
-    logger.info(f"Available prompts: {prompts}")
+    # Use FastMCP's built-in server runner with streamable-http transport
+    # Configure host and port through environment variables
+    import os
+    os.environ['HOST'] = '0.0.0.0'
+    os.environ['PORT'] = str(port)
     
-    app = create_app()
-    
-    config = uvicorn.Config(
-        app=app,
-        host="0.0.0.0",
-        port=port,
-        log_level=log_level.lower(),
-        access_log=True
-    )
-    
-    server = uvicorn.Server(config)
-    await server.serve()
+    # This properly initializes the task group and handles all the ASGI setup
+    mcp.run(transport='streamable-http')
 
 
 def main():
@@ -290,9 +285,8 @@ def main():
     # Set logging level from args
     logging.getLogger().setLevel(getattr(logging, args.log_level.upper()))
     
-    import asyncio
     try:
-        asyncio.run(run_server(args.port, args.log_level, args.json_response))
+        run_server(args.port, args.log_level, args.json_response)
     except KeyboardInterrupt:
         logger.info("Server shutdown requested")
     except Exception as e:
